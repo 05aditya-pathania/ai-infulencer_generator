@@ -18,7 +18,8 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 POLLINATIONS_API_KEY=your-pollinations-api-key
 POLLINATIONS_IMAGE_MODEL=tongyi-mai/z-image-turbo
-LUMA_AGENTS_API_KEY=your-luma-agents-api-key
+CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
+CLOUDFLARE_API_TOKEN=your-cloudflare-workers-ai-token
 ```
 
 Create a server-side secret key (`sk_*`) at [Pollinations](https://enter.pollinations.ai/keys), then set `POLLINATIONS_API_KEY`. The default image model is `tongyi-mai/z-image-turbo`; set `POLLINATIONS_IMAGE_MODEL` only to a model your Pollinations account allows. A `403 FORBIDDEN` means the Pollinations key/account cannot access the selected model; changing the model name alone will not grant access. Use a secret key with image-model access, and contact Pollinations support if a secret key is still denied. Keep the key server-only: never rename it with a `NEXT_PUBLIC_` prefix. Never put a Supabase secret or service-role key in a `NEXT_PUBLIC_` variable.
@@ -43,7 +44,7 @@ The `/dashboard` route requires a verified Supabase session. Supabase sessions a
 
 ## Creator dashboard
 
-The authenticated workspace includes a responsive sidebar with Dashboard, AI Studio, Calendar, Social accounts, Analytics, Media library, and Settings. The overview provides getting-started actions and shortcuts into those sections. AI influencer creation and the Luma-powered post composer are available. Direct social account connections, scheduling, publishing, analytics, and general media-library features still need their integrations and data models.
+The authenticated workspace includes a responsive sidebar with Dashboard, AI Studio, Calendar, Social accounts, Analytics, Media library, and Settings. The overview provides getting-started actions and shortcuts into those sections. AI influencer creation and the Cloudflare-powered post composer are available. Drafts, publish intents, and scheduled post details are saved to the private `social-posts` storage bucket and `social_posts` table. Direct social account connections and automatic publishing still need platform integrations and a scheduler; saving a scheduled time does not publish a post by itself.
 
 ### AI influencer models
 
@@ -53,7 +54,7 @@ Keep `POLLINATIONS_API_KEY` on the server. The model images are stored in the pr
 
 ### Social post composer
 
-The **Create new post** page loads the signed-in user's saved creator models, lets them choose Instagram, TikTok, X, LinkedIn, Pinterest, or Facebook, and configure one of four visual formats, a campaign brief, goal, scene, tone, CTA, language, hashtag count, and up to three reference images. Reference files are compressed in the browser and sent to the server as small inline image references. The server adds the saved creator portrait and submits an image request to Luma Agents `uni-1`, polls for completion, then displays the generated image in a platform-style preview. Set `LUMA_AGENTS_API_KEY` as a server-only environment variable. Caption copy and hashtags are generated from the chosen copy settings and remain editable in the preview. Generation is preview-only: it does not save a post record, publish to a social network, or charge Postly credits. Reach figures in the creator picker are illustrative planning estimates, not connected analytics. See the [Luma Agents image-generation guide](https://docs.agents.lumalabs.ai/guides/images/generation/index.md).
+The **Create new post** page loads the signed-in user's saved creator models, lets them choose Instagram, TikTok, X, LinkedIn, Pinterest, or Facebook, and configure one of four visual formats, a campaign brief, goal, scene, tone, CTA, language, hashtag count, and up to three reference images. Reference files are compressed in the browser and sent to the server as small inline image references. The server adds the saved creator portrait and submits the prompt and references to Cloudflare Workers AI `@cf/black-forest-labs/flux-2-klein-9b`, then displays the generated image in a platform-style preview. Set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` as server-only environment variables. Captions and hashtags remain editable before saving as a draft, marking ready to publish, or storing a scheduled time. These actions save the image and post details in Supabase and do not charge Postly credits. Social platforms are not connected yet, so publish intents and scheduled times are stored in Postly but are not sent to the networks automatically. Cloudflare Workers AI includes a limited free daily neuron allocation; see the [Workers AI pricing page](https://developers.cloudflare.com/workers-ai/platform/pricing/).
 
 ## Checks
 

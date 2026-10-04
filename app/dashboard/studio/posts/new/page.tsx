@@ -60,12 +60,14 @@ export default async function NewPostPage() {
           <h1>Create a new post</h1>
           <p>Shape the brief, set the scene, and let your creator bring the idea to life.</p>
         </div>
-        <span className="post-engine-badge"><span /> POWERED BY LUMA UNI-1</span>
+        <span className="post-engine-badge"><span /> POWERED BY FLUX.2 KLEIN</span>
       </section>
 
       <CreatePostComposer
         creators={creators}
-        imageGenerationConfigured={Boolean(process.env.LUMA_AGENTS_API_KEY)}
+        imageGenerationConfigured={Boolean(
+          process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN,
+        )}
       />
     </div>
   );

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   buildHashtags,
   buildPostCaption,
@@ -47,12 +47,22 @@ type ReferenceImage = {
   fileName: string;
 };
 
+type SaveStatus = "draft" | "scheduled" | "ready_to_publish";
+
+type SaveNotice = {
+  status: SaveStatus;
+  scheduledAt: string | null;
+};
+
 type CreatePostComposerProps = {
   creators: PostCreator[];
   imageGenerationConfigured: boolean;
 };
 
-const reachEstimates = ["8.4k", "12.6k", "6.9k", "14.2k", "9.8k", "11.3k"];
+function toLocalDateTimeValue(date: Date) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
 
 function waitForBlob(blob: Blob) {
   return new Promise<string>((resolve, reject) => {
@@ -125,11 +135,18 @@ export function CreatePostComposer({
   const [language, setLanguage] = useState<PostLanguage>("English");
   const [hashtagCount, setHashtagCount] = useState(5);
   const [references, setReferences] = useState<ReferenceImage[]>([]);
+  const [actionMode, setActionMode] = useState<"publish" | "schedule">("publish");
+  const [scheduleTime, setScheduleTime] = useState(() =>
+    toLocalDateTimeValue(new Date(Date.now() + 60 * 60 * 1000)),
+  );
   const [preview, setPreview] = useState<PostPreview | null>(null);
   const [caption, setCaption] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<SaveNotice | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const saveDialogRef = useRef<HTMLDialogElement>(null);
 
   const selectedCreator = creators.find((creator) => creator.id === modelId);
   const selectedPlatform = platforms.find((item) => item.id === platform) ?? platforms[0];
@@ -140,6 +157,12 @@ export function CreatePostComposer({
   const captionText = caption || (campaign || product
     ? buildPostCaption({ campaign, product, goal, tone, callToAction, language })
     : "Your caption will take shape as you build your brief.");
+
+  useEffect(() => {
+    if (saveNotice && saveDialogRef.current && !saveDialogRef.current.open) {
+      saveDialogRef.current.showModal();
+    }
+  }, [saveNotice]);
 
   async function handleReferenceFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.currentTarget.files ?? []);
@@ -233,6 +256,60 @@ export function CreatePostComposer({
     }
   }
 
+  async function handleSavePost(status: SaveStatus) {
+    if (!preview) return;
+
+    let scheduledAt: string | null = null;
+    if (status === "scheduled") {
+      const selectedTime = new Date(scheduleTime);
+      if (!scheduleTime || !Number.isFinite(selectedTime.getTime()) || selectedTime.getTime() <= Date.now()) {
+        setErrorMessage("Choose a schedule time in the future.");
+        return;
+      }
+      scheduledAt = selectedTime.toISOString();
+    }
+
+    setIsSaving(true);
+    setErrorMessage("");
+
+    try {
+      const response = await fetch("/api/posts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelId,
+          platform,
+          format,
+          campaign,
+          product,
+          goal,
+          scene,
+          tone,
+          callToAction,
+          language,
+          hashtagCount,
+          references: [],
+          caption: captionText,
+          hashtags,
+          imageDataUrl: preview.imageUrl,
+          status,
+          scheduledAt,
+        }),
+      });
+      const payload = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "We couldn’t save this post. Please try again.");
+      }
+
+      setSaveNotice({ status, scheduledAt });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "We couldn’t save this post. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <div className="post-composer">
       <form className="post-composer-form" onSubmit={handleGenerate}>
@@ -243,7 +320,7 @@ export function CreatePostComposer({
           </div>
           {creators.length > 0 ? (
             <div className="post-creator-grid">
-              {creators.map((creator, index) => (
+              {creators.map((creator) => (
                 <button
                   aria-pressed={modelId === creator.id}
                   className={`post-creator-card${modelId === creator.id ? " selected" : ""}`}
@@ -261,7 +338,6 @@ export function CreatePostComposer({
                   <span className="post-creator-info">
                     <strong>{creator.name}</strong>
                     <small>{creator.vibe}</small>
-                    <em>↗ {reachEstimates[index % reachEstimates.length]} est. reach</em>
                   </span>
                   <span className="post-creator-check">{modelId === creator.id ? "✓" : ""}</span>
                 </button>
@@ -274,7 +350,6 @@ export function CreatePostComposer({
               <Link className="button button-outline" href="/dashboard/studio/models/new">Create a model ↗</Link>
             </div>
           )}
-          <p className="post-reach-note">Reach is a planning estimate, not connected account analytics.</p>
         </section>
 
         <section className="post-form-section">
@@ -412,7 +487,7 @@ export function CreatePostComposer({
         {errorMessage && <div className="post-composer-error" role="alert">{errorMessage}</div>}
         {!imageGenerationConfigured && (
           <div className="post-composer-hint" role="status">
-            Add <code>LUMA_AGENTS_API_KEY</code> to your server environment to enable Uni-1 generation.
+            Add <code>CLOUDFLARE_ACCOUNT_ID</code> and <code>CLOUDFLARE_API_TOKEN</code> to enable image generation.
           </div>
         )}
         <button
@@ -421,10 +496,10 @@ export function CreatePostComposer({
           type="submit"
         >
           {isGenerating
-            ? <><span className="builder-spinner" /> Creating your post with Uni-1…</>
+            ? <><span className="builder-spinner" /> Creating your post with FLUX.2 Klein…</>
             : <>✧ Generate post <span>↗</span></>}
         </button>
-        <p className="post-generation-note">Uni-1 makes the visual. Captions and hashtags are editable before sharing.</p>
+        <p className="post-generation-note">FLUX.2 Klein makes the visual. Captions and hashtags are editable before saving.</p>
       </form>
 
       <aside aria-live="polite" className="post-preview-panel">
@@ -468,7 +543,7 @@ export function CreatePostComposer({
                 <i aria-hidden="true">✧</i>
               </div>
             )}
-            {isGenerating && <div className="post-image-loading"><span className="builder-spinner" /> Luma is composing your image…</div>}
+            {isGenerating && <div className="post-image-loading"><span className="builder-spinner" /> Cloudflare is composing your image…</div>}
           </div>
 
           <div className="social-post-actions">
@@ -491,12 +566,97 @@ export function CreatePostComposer({
         </article>
 
         {preview && (
-          <div className="post-preview-success"><span>✓</span> Image generated with Luma {preview.aspectRatio} · Caption is ready to edit.</div>
+          <section aria-label="Save or schedule post" className="post-delivery-panel">
+            <div className="post-delivery-heading">
+              <h3>Save or schedule</h3>
+              <span>{selectedPlatform.label}</span>
+            </div>
+            <div aria-label="Publishing timing" className="post-publish-mode">
+              <button
+                aria-pressed={actionMode === "publish"}
+                className={actionMode === "publish" ? "selected" : ""}
+                onClick={() => setActionMode("publish")}
+                type="button"
+              >
+                Publish now
+              </button>
+              <button
+                aria-pressed={actionMode === "schedule"}
+                className={actionMode === "schedule" ? "selected" : ""}
+                onClick={() => setActionMode("schedule")}
+                type="button"
+              >
+                Schedule later
+              </button>
+            </div>
+            {actionMode === "schedule" && (
+              <label className="post-schedule-field">
+                <span>Date and time</span>
+                <input
+                  min={toLocalDateTimeValue(new Date())}
+                  onChange={(event) => setScheduleTime(event.target.value)}
+                  type="datetime-local"
+                  value={scheduleTime}
+                />
+              </label>
+            )}
+            <p className="post-delivery-note">
+              Saving stores your post in Postly. Social accounts aren’t connected yet, so posts won’t publish automatically.
+            </p>
+            <div className="post-delivery-actions">
+              <button
+                className="post-save-draft-button"
+                disabled={isSaving}
+                onClick={() => void handleSavePost("draft")}
+                type="button"
+              >
+                {isSaving ? "Saving…" : "Save as draft"}
+              </button>
+              <button
+                className="button button-dark post-save-primary-button"
+                disabled={isSaving}
+                onClick={() => void handleSavePost(actionMode === "schedule" ? "scheduled" : "ready_to_publish")}
+                type="button"
+              >
+                {isSaving ? "Saving…" : actionMode === "schedule" ? "Schedule post" : "Publish now"}
+              </button>
+            </div>
+          </section>
+        )}
+
+        {preview && (
+          <div className="post-preview-success"><span>✓</span> Image generated with FLUX.2 Klein {preview.aspectRatio} · Caption is ready to edit.</div>
         )}
         {!preview && !isGenerating && (
           <div className="post-preview-tip"><span>✧</span><p>Select a saved creator, shape the brief, then generate to see your finished social creative here.</p></div>
         )}
-        <div className="post-preview-footer"><span>✦</span> AI-generated visual · Preview only</div>
+        <div className="post-preview-footer"><span>✦</span> AI-generated visual · Not posted yet</div>
+
+        {saveNotice && (
+          <dialog
+            aria-labelledby="post-save-dialog-title"
+            className="post-save-dialog"
+            onCancel={() => setSaveNotice(null)}
+            ref={saveDialogRef}
+          >
+            <span className="post-save-dialog-icon" aria-hidden="true">✓</span>
+            <h2 id="post-save-dialog-title">
+              {saveNotice.status === "draft"
+                ? "Draft saved"
+                : saveNotice.status === "scheduled"
+                  ? "Post scheduled"
+                  : "Post saved"}
+            </h2>
+            <p>
+              {saveNotice.status === "draft"
+                ? `Your ${selectedPlatform.label} post and image are saved as a draft.`
+                : saveNotice.status === "scheduled"
+                  ? `Your post is saved for ${new Date(saveNotice.scheduledAt ?? "").toLocaleString()}. It won’t publish automatically until a social account and scheduler are connected.`
+                  : "Your post is saved in Postly and ready for publishing. It was not posted because social account integrations are not connected."}
+            </p>
+            <button className="button button-dark" onClick={() => setSaveNotice(null)} type="button">Done</button>
+          </dialog>
+        )}
       </aside>
     </div>
   );
