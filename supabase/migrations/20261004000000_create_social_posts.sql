@@ -37,19 +37,27 @@ create index if not exists social_posts_scheduled_at_idx
 
 alter table public.social_posts enable row level security;
 
+drop policy if exists "Users can read their own social posts"
+  on public.social_posts;
 create policy "Users can read their own social posts"
   on public.social_posts for select to authenticated
   using ((select auth.uid()) = user_id);
 
+drop policy if exists "Users can create their own social posts"
+  on public.social_posts;
 create policy "Users can create their own social posts"
   on public.social_posts for insert to authenticated
   with check ((select auth.uid()) = user_id);
 
+drop policy if exists "Users can update their own social posts"
+  on public.social_posts;
 create policy "Users can update their own social posts"
   on public.social_posts for update to authenticated
   using ((select auth.uid()) = user_id)
   with check ((select auth.uid()) = user_id);
 
+drop policy if exists "Users can delete their own social posts"
+  on public.social_posts;
 create policy "Users can delete their own social posts"
   on public.social_posts for delete to authenticated
   using ((select auth.uid()) = user_id);
@@ -69,6 +77,8 @@ set public = false,
     file_size_limit = excluded.file_size_limit,
     allowed_mime_types = excluded.allowed_mime_types;
 
+drop policy if exists "Users can upload their own social post images"
+  on storage.objects;
 create policy "Users can upload their own social post images"
   on storage.objects for insert to authenticated
   with check (
@@ -76,6 +86,8 @@ create policy "Users can upload their own social post images"
     and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
+drop policy if exists "Users can read their own social post images"
+  on storage.objects;
 create policy "Users can read their own social post images"
   on storage.objects for select to authenticated
   using (
@@ -83,6 +95,8 @@ create policy "Users can read their own social post images"
     and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
+drop policy if exists "Users can delete their own social post images"
+  on storage.objects;
 create policy "Users can delete their own social post images"
   on storage.objects for delete to authenticated
   using (
