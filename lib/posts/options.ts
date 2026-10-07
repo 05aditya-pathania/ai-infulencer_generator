@@ -66,7 +66,7 @@ export type PostLanguage = (typeof postLanguages)[number];
 
 export type PostGenerationInput = {
   modelId: string;
-  platform: SocialPlatform;
+  platform: SocialPlatform | null;
   format: PostFormat;
   campaign: string;
   product: string;
@@ -88,8 +88,9 @@ export function isPostGenerationInput(value: unknown): value is PostGenerationIn
   return (
     typeof input.modelId === "string" &&
     input.modelId.length <= 64 &&
-    typeof input.platform === "string" &&
-    platforms.some(({ id }) => id === input.platform) &&
+    (input.platform === null ||
+      (typeof input.platform === "string" &&
+        platforms.some(({ id }) => id === input.platform))) &&
     typeof input.format === "string" &&
     postFormats.some(({ id }) => id === input.format) &&
     typeof input.campaign === "string" &&

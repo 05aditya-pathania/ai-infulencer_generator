@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import { isPostGenerationInput } from "@/lib/posts/options";
+import { isPostGenerationInput, platforms as availablePlatforms, type SocialPlatform } from "@/lib/posts/options";
 import { createClient } from "@/lib/supabase/server";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -15,6 +15,19 @@ function isObject(value: unknown): value is JsonObject {
 
 function isSaveStatus(value: unknown): value is (typeof postStatuses)[number] {
   return typeof value === "string" && postStatuses.some((status) => status === value);
+}
+
+function isPlatformSelection(value: unknown): value is SocialPlatform[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= availablePlatforms.length &&
+    value.every(
+      (platform, index) =>
+        typeof platform === "string" &&
+        availablePlatforms.some((item) => item.id === platform) &&
+        value.indexOf(platform) === index,
+    )
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -44,6 +57,13 @@ export async function POST(request: NextRequest) {
   if (!isPostGenerationInput(saveBody)) {
     return NextResponse.json({ error: "Some post settings are invalid. Review the form and try again." }, { status: 400 });
   }
+  if (
+    !isPlatformSelection(body.platforms) ||
+    saveBody.platform !== (body.platforms[0] ?? null)
+  ) {
+    return NextResponse.json({ error: "Choose valid social platforms for this post." }, { status: 400 });
+  }
+  const selectedPlatforms = body.platforms;
 
   const status = body.status;
   const scheduledAt = body.scheduledAt;
@@ -106,6 +126,42 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Please sign in before saving this post." }, { status: 401 });
   }
 
+  if (status !== "draft" && selectedPlatforms.length === 0) {
+    return NextResponse.json(
+      { error: "Connect and select at least one social platform before scheduling or publishing this post." },
+      { status: 400 },
+    );
+  }
+
+  if (status !== "draft" && selectedPlatforms.length > 0) {
+    const accountPlatforms = selectedPlatforms.map((platform) =>
+      platform === "x" ? "twitter" : platform,
+    );
+    const { data: connectedAccounts, error: accountError } = await supabase
+      .from("social_accounts")
+      .select("platform")
+      .eq("user_id", user.id)
+      .in("platform", accountPlatforms);
+
+    if (accountError) {
+      console.error("Could not verify the selected social platforms:", accountError.message);
+      return NextResponse.json({ error: "We couldn’t verify the selected social account." }, { status: 500 });
+    }
+    const connectedPlatformSet = new Set((connectedAccounts ?? []).map((account) => account.platform));
+    const missingPlatforms = selectedPlatforms.filter((platform) =>
+      !connectedPlatformSet.has(platform === "x" ? "twitter" : platform),
+    );
+    if (missingPlatforms.length > 0) {
+      const labels = missingPlatforms
+        .map((platform) => availablePlatforms.find((item) => item.id === platform)?.label ?? platform)
+        .join(", ");
+      return NextResponse.json(
+        { error: `Connect every selected platform before scheduling or publishing this post. Not connected: ${labels}.` },
+        { status: 400 },
+      );
+    }
+  }
+
   const { data: model, error: modelError } = await supabase
     .from("influencer_models")
     .select("id, name")
@@ -137,7 +193,8 @@ export async function POST(request: NextRequest) {
       user_id: user.id,
       model_id: model.id,
       model_name: model.name,
-      platform: saveBody.platform,
+      platform: selectedPlatforms[0] ?? null,
+      platforms: selectedPlatforms,
       format: saveBody.format,
       campaign: saveBody.campaign.trim(),
       product: saveBody.product.trim(),

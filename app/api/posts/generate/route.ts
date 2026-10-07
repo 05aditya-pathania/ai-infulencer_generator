@@ -68,9 +68,11 @@ function makePrompt(input: {
   scene: string;
   format: string;
   platform: string;
+  productReferenceCount: number;
 }) {
   const ratio = postFormats.find((item) => item.id === input.format)?.ratio ?? "1:1";
-  return [
+  const hasProductReferences = input.productReferenceCount > 0;
+  const prompt = [
     `Create a polished, photorealistic social media campaign image for ${input.platform}.`,
     `Feature the same fictional AI creator named ${input.name}, with a ${input.vibe} aesthetic.`,
     `Campaign: ${input.campaign || "brand storytelling"}.`,
@@ -78,10 +80,25 @@ function makePrompt(input: {
     `Campaign goal: ${input.goal}.`,
     `Scene direction: ${input.scene}.`,
     `Compose the artwork in a ${ratio} aspect ratio for the ${input.format} post format.`,
-    "Use reference image 1 for the selected creator's identity. Use reference images 2 onward for the supplied product, color palette, styling, and scene direction.",
+    hasProductReferences
+      ? "Reference image 1 is the selected creator; preserve their identity and appearance. Reference images 2 onward are the supplied product references."
+      : "Use reference image 1 for the selected creator's identity. Use reference images 2 onward for the supplied product, color palette, styling, and scene direction.",
+    ...(hasProductReferences
+      ? [
+          `Treat each of the ${input.productReferenceCount} supplied product references as authoritative evidence of the actual product identity, not as loose inspiration.`,
+          "Reproduce the same product and packaging: preserve its exact container silhouette and proportions, label layout, visible brand/logo, artwork, typography, materials, and dominant colors. Do not invent, replace, rebrand, recolor, omit, or distort packaging details; keep the product large, sharp, and recognizable, with its label visible.",
+          "If a product reference shows a can, make it visibly read as that same can, preserving its cylindrical shape, proportions, top and pull tab, label artwork, logo, and colors; do not turn it into a bottle, jar, or generic container.",
+          "If a person appears with a can product, have them hold it naturally at a realistic scale, upright when appropriate, with fingers positioned so the key label and logo remain visible.",
+          "Let the scene and styling complement the referenced product without changing its identity or packaging.",
+        ]
+      : []),
     "Make the product and creator the clear focal points with intentional editorial lighting and a clean composition.",
-    "Do not add captions, lettering, logos, watermarks, UI, frames, or collages; the post copy is added separately.",
-  ].join(" ");
+    hasProductReferences
+      ? "Do not add captions, watermarks, UI, frames, or collages. Preserve the real product label, brand mark, lettering, and artwork shown in its reference; do not add fictional branding."
+      : "Do not add captions, lettering, logos, watermarks, UI, frames, or collages; the post copy is added separately.",
+  ];
+
+  return prompt.join(" ");
 }
 
 async function generateWithCloudflare(
@@ -93,6 +110,8 @@ async function generateWithCloudflare(
   const form = new FormData();
   form.set("prompt", prompt);
 
+  // The model accepts repeated `image` parts for its image-reference array.
+  // Keep the creator first, followed by all uploaded references in their chosen order.
   for (const [index, reference] of references.entries()) {
     const imageBuffer = new ArrayBuffer(reference.bytes.byteLength);
     new Uint8Array(imageBuffer).set(reference.bytes);
@@ -268,7 +287,8 @@ export async function POST(request: NextRequest) {
     goal: body.goal,
     scene: body.scene,
     format: postFormat?.label ?? "Single",
-    platform: body.platform,
+    platform: body.platform ?? "social media",
+    productReferenceCount: body.references.length,
   });
 
   try {

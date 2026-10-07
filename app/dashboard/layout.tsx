@@ -31,6 +31,10 @@ export default async function DashboardLayout({
     .select("display_name, email, credits")
     .eq("id", user.id)
     .maybeSingle();
+  const { count: connectedAccountsCount, error: accountsError } = await supabase
+    .from("social_accounts")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id);
 
   const metadataName =
     user.user_metadata.display_name ??
@@ -49,6 +53,9 @@ export default async function DashboardLayout({
       email={profile?.email ?? user.email ?? ""}
       credits={profile?.credits ?? null}
       profileError={Boolean(profileError)}
+      connectedAccountsCount={
+        accountsError ? null : (connectedAccountsCount ?? 0)
+      }
     >
       {children}
     </DashboardChrome>

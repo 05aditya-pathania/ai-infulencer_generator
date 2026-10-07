@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CreatePostComposer, type PostCreator } from "@/components/create-post-composer";
 import { createClient } from "@/lib/supabase/server";
+import type { SocialPlatform } from "@/lib/posts/options";
 
 export default async function NewPostPage() {
   const supabase = await createClient();
@@ -17,8 +18,18 @@ export default async function NewPostPage() {
         .limit(12)
     : { data: [], error: null };
 
+  const { data: connectedAccounts, error: accountsError } = user
+    ? await supabase
+        .from("social_accounts")
+        .select("platform")
+        .eq("user_id", user.id)
+    : { data: [], error: null };
+
   if (error) {
     throw new Error(`Could not load your saved creator models: ${error.message}`);
+  }
+  if (accountsError) {
+    throw new Error(`Could not load your connected social accounts: ${accountsError.message}`);
   }
 
   const creators: PostCreator[] = await Promise.all(
@@ -51,6 +62,14 @@ export default async function NewPostPage() {
     }),
   );
 
+  const connectedPlatforms = [...new Set(
+    (connectedAccounts ?? [])
+      .map((account) => (account.platform === "twitter" ? "x" : account.platform))
+      .filter((platform): platform is SocialPlatform =>
+        ["instagram", "tiktok", "x", "linkedin", "pinterest", "facebook"].includes(platform),
+      ),
+  )];
+
   return (
     <div className="studio-page">
       <section className="studio-heading post-page-heading">
@@ -65,6 +84,7 @@ export default async function NewPostPage() {
 
       <CreatePostComposer
         creators={creators}
+        connectedPlatforms={connectedPlatforms}
         imageGenerationConfigured={Boolean(
           process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN,
         )}

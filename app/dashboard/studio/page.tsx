@@ -1,13 +1,15 @@
 import Link from "next/link";
+import { StudioRecentActivity, type StudioPost } from "@/components/studio-recent-activity";
 import { createClient } from "@/lib/supabase/server";
 
 type StudioPageProps = {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; page?: string }>;
 };
 
 export default async function StudioPage({ searchParams }: StudioPageProps) {
   const params = await searchParams;
   const view = params.view === "posts" ? "posts" : "models";
+  const requestedPage = Number.parseInt(params.page ?? "1", 10);
   const supabase = await createClient();
   const {
     data: { user },
@@ -21,6 +23,19 @@ export default async function StudioPage({ searchParams }: StudioPageProps) {
         .order("created_at", { ascending: false })
         .limit(6)
     : { data: [] };
+  const { data: connectedAccounts, error: connectedAccountsError } = user
+    ? await supabase
+        .from("social_accounts")
+        .select("platform")
+        .eq("user_id", user.id)
+    : { data: [], error: null };
+
+  if (connectedAccountsError) {
+    throw new Error(`Could not load your connected social accounts: ${connectedAccountsError.message}`);
+  }
+  const connectedPlatforms = [...new Set(
+    (connectedAccounts ?? []).map((account) => account.platform === "twitter" ? "x" : account.platform),
+  )];
 
   const signedModels = await Promise.all(
     (models ?? []).map(async (model) => {
@@ -33,6 +48,57 @@ export default async function StudioPage({ searchParams }: StudioPageProps) {
         .createSignedUrl(model.portrait_path, 60 * 60);
 
       return { ...model, portraitUrl: data?.signedUrl ?? null };
+    }),
+  );
+
+  const { count: postCount, error: postCountError } = user
+    ? await supabase
+        .from("social_posts")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .in("status", ["draft", "scheduled"])
+    : { count: 0, error: null };
+
+  if (postCountError) {
+    throw new Error(`Could not count your recent posts: ${postCountError.message}`);
+  }
+
+  const postsPerPage = 8;
+  const pageCount = Math.ceil((postCount ?? 0) / postsPerPage);
+  const page = pageCount === 0
+    ? 1
+    : Math.min(Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1), pageCount);
+  const { data: pagePosts, error: postsError } = user
+    ? await supabase
+        .from("social_posts")
+        .select("id, model_name, platform, platforms, format, campaign, product, goal, scene, tone, call_to_action, language, caption, hashtags, image_path, status, scheduled_at, created_at")
+        .eq("user_id", user.id)
+        .in("status", ["draft", "scheduled"])
+        .order("created_at", { ascending: false })
+        .range((page - 1) * postsPerPage, page * postsPerPage - 1)
+    : { data: [], error: null };
+
+  if (postsError) {
+    throw new Error(`Could not load your recent posts: ${postsError.message}`);
+  }
+
+  const recentPosts: StudioPost[] = await Promise.all(
+    (pagePosts ?? []).map(async (post) => {
+      const status = post.status === "draft"
+        ? "draft"
+        : post.status === "scheduled"
+          ? "scheduled"
+          : null;
+      if (!status) {
+        throw new Error(`Unexpected status for recent post ${post.id}: ${post.status}`);
+      }
+      const { data, error } = await supabase.storage
+        .from("social-posts")
+        .createSignedUrl(post.image_path, 60 * 60);
+      if (error) {
+        throw new Error(`Could not load the thumbnail for ${post.campaign}: ${error.message}`);
+      }
+      return { ...post, status, imageUrl: data.signedUrl };
     }),
   );
 
@@ -109,6 +175,15 @@ export default async function StudioPage({ searchParams }: StudioPageProps) {
           </div>
         )}
       </section>
+
+      <StudioRecentActivity
+        connectedPlatforms={connectedPlatforms}
+        page={page}
+        pageCount={pageCount}
+        posts={recentPosts}
+        totalCount={postCount ?? 0}
+        view={view}
+      />
     </div>
   );
 }

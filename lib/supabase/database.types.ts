@@ -16,6 +16,7 @@ export type Database = {
           display_name: string | null;
           credits: number;
           created_at: string;
+          zernio_profile_id: string | null;
         };
         Insert: {
           id: string;
@@ -23,6 +24,7 @@ export type Database = {
           display_name?: string | null;
           credits?: number;
           created_at?: string;
+          zernio_profile_id?: string | null;
         };
         Update: {
           id?: string;
@@ -30,6 +32,40 @@ export type Database = {
           display_name?: string | null;
           credits?: number;
           created_at?: string;
+          zernio_profile_id?: string | null;
+        };
+        Relationships: [];
+      };
+      social_accounts: {
+        Row: {
+          id: string;
+          user_id: string;
+          zernio_account_id: string;
+          platform: string;
+          username: string | null;
+          display_name: string | null;
+          profile_url: string | null;
+          connected_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          zernio_account_id: string;
+          platform: string;
+          username?: string | null;
+          display_name?: string | null;
+          profile_url?: string | null;
+          connected_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          zernio_account_id?: string;
+          platform?: string;
+          username?: string | null;
+          display_name?: string | null;
+          profile_url?: string | null;
+          connected_at?: string;
         };
         Relationships: [];
       };
@@ -84,7 +120,8 @@ export type Database = {
           user_id: string;
           model_id: string | null;
           model_name: string;
-          platform: string;
+          platform: string | null;
+          platforms: string[];
           format: string;
           campaign: string;
           product: string;
@@ -107,7 +144,8 @@ export type Database = {
           user_id: string;
           model_id?: string | null;
           model_name: string;
-          platform: string;
+          platform?: string | null;
+          platforms?: string[];
           format: string;
           campaign: string;
           product: string;
@@ -130,7 +168,8 @@ export type Database = {
           user_id?: string;
           model_id?: string | null;
           model_name?: string;
-          platform?: string;
+          platform?: string | null;
+          platforms?: string[];
           format?: string;
           campaign?: string;
           product?: string;

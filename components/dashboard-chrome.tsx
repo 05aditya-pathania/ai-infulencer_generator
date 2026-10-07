@@ -65,6 +65,7 @@ type DashboardChromeProps = {
   email: string;
   credits: number | null;
   profileError: boolean;
+  connectedAccountsCount: number | null;
 };
 
 export function DashboardChrome({
@@ -73,6 +74,7 @@ export function DashboardChrome({
   email,
   credits,
   profileError,
+  connectedAccountsCount,
 }: DashboardChromeProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -102,8 +104,9 @@ export function DashboardChrome({
       >
         <NavigationIcon name={item.icon} />
         <span>{item.label}</span>
-        {item.href === "/dashboard/accounts" && (
-          <span className="dashboard-nav-count">0</span>
+        {item.href === "/dashboard/accounts" &&
+          connectedAccountsCount !== null && (
+          <span className="dashboard-nav-count">{connectedAccountsCount}</span>
         )}
       </Link>
     );

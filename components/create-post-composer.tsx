@@ -7,6 +7,7 @@ import {
   buildHashtags,
   buildPostCaption,
 } from "@/lib/posts/copy";
+import { PostActionPanel } from "@/components/post-action-panel";
 import {
   callToActions,
   captionTones,
@@ -52,10 +53,12 @@ type SaveStatus = "draft" | "scheduled" | "ready_to_publish";
 type SaveNotice = {
   status: SaveStatus;
   scheduledAt: string | null;
+  platforms: SocialPlatform[];
 };
 
 type CreatePostComposerProps = {
   creators: PostCreator[];
+  connectedPlatforms: SocialPlatform[];
   imageGenerationConfigured: boolean;
 };
 
@@ -121,10 +124,14 @@ function platformHandle(name: string) {
 
 export function CreatePostComposer({
   creators,
+  connectedPlatforms,
   imageGenerationConfigured,
 }: CreatePostComposerProps) {
   const [modelId, setModelId] = useState(creators[0]?.id ?? "");
-  const [platform, setPlatform] = useState<SocialPlatform>("instagram");
+  const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>(
+    connectedPlatforms[0] ? [connectedPlatforms[0]] : [],
+  );
+  const [showAllPlatforms, setShowAllPlatforms] = useState(false);
   const [format, setFormat] = useState<PostFormat>("single");
   const [campaign, setCampaign] = useState("");
   const [product, setProduct] = useState("");
@@ -141,6 +148,7 @@ export function CreatePostComposer({
   );
   const [preview, setPreview] = useState<PostPreview | null>(null);
   const [caption, setCaption] = useState("");
+  const [isConnectingPlatform, setIsConnectingPlatform] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveNotice, setSaveNotice] = useState<SaveNotice | null>(null);
@@ -149,7 +157,17 @@ export function CreatePostComposer({
   const saveDialogRef = useRef<HTMLDialogElement>(null);
 
   const selectedCreator = creators.find((creator) => creator.id === modelId);
-  const selectedPlatform = platforms.find((item) => item.id === platform) ?? platforms[0];
+  const platform = selectedPlatforms[0] ?? null;
+  const visiblePlatforms = showAllPlatforms
+    ? platforms
+    : platforms.filter((item) => connectedPlatforms.includes(item.id));
+  const selectedPlatformsAreConnected =
+    selectedPlatforms.length > 0 &&
+    selectedPlatforms.every((item) => connectedPlatforms.includes(item));
+  const platformToConnect =
+    selectedPlatforms.find((item) => !connectedPlatforms.includes(item)) ?? null;
+  const platformToConnectDetails = platforms.find((item) => item.id === platformToConnect);
+  const platformToConnectCanBeConnected = platformToConnect !== null;
   const hashtags = useMemo(
     () => buildHashtags(product, campaign, hashtagCount),
     [campaign, hashtagCount, product],
@@ -163,6 +181,21 @@ export function CreatePostComposer({
       saveDialogRef.current.showModal();
     }
   }, [saveNotice]);
+
+  function dismissSaveNotice() {
+    if (saveDialogRef.current?.open) {
+      saveDialogRef.current.close();
+    }
+    setSaveNotice(null);
+  }
+
+  function togglePlatform(selected: SocialPlatform) {
+    setSelectedPlatforms((current) =>
+      current.includes(selected)
+        ? current.filter((item) => item !== selected)
+        : [...current, selected],
+    );
+  }
 
   async function handleReferenceFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.currentTarget.files ?? []);
@@ -184,6 +217,48 @@ export function CreatePostComposer({
 
   function removeReference(id: string) {
     setReferences((current) => current.filter((reference) => reference.id !== id));
+  }
+
+  async function connectSelectedPlatform() {
+    if (!platformToConnect) {
+      return;
+    }
+
+    setIsConnectingPlatform(true);
+    setErrorMessage("");
+    try {
+      const response = await fetch("/api/accounts/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: platformToConnect === "x" ? "twitter" : platformToConnect,
+          returnTo: "studio-post",
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { authUrl?: unknown; error?: unknown }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          typeof payload?.error === "string"
+            ? payload.error
+            : "We couldn’t start this social account connection.",
+        );
+      }
+      if (typeof payload?.authUrl !== "string") {
+        throw new Error("The connection service did not return an authorization link.");
+      }
+
+      window.location.assign(payload.authUrl);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "We couldn’t start this social account connection.",
+      );
+      setIsConnectingPlatform(false);
+    }
   }
 
   async function handleGenerate(event: FormEvent<HTMLFormElement>) {
@@ -279,6 +354,7 @@ export function CreatePostComposer({
         body: JSON.stringify({
           modelId,
           platform,
+          platforms: selectedPlatforms,
           format,
           campaign,
           product,
@@ -302,7 +378,7 @@ export function CreatePostComposer({
         throw new Error(payload.error ?? "We couldn’t save this post. Please try again.");
       }
 
-      setSaveNotice({ status, scheduledAt });
+      setSaveNotice({ status, scheduledAt, platforms: selectedPlatforms });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "We couldn’t save this post. Please try again.");
     } finally {
@@ -355,22 +431,120 @@ export function CreatePostComposer({
         <section className="post-form-section">
           <div className="post-section-heading">
             <span>02</span>
-            <div><h2>Where are we posting?</h2><p>Choose a channel for the creative.</p></div>
+            <div>
+              <h2>Where are we posting?</h2>
+              <p>
+                {connectedPlatforms.length > 0
+                  ? "Choose one or more connected channels for this post."
+                  : "Connect channels to enable scheduling, or save this post as a draft."}
+              </p>
+            </div>
           </div>
-          <div aria-label="Social platform" className="post-platform-tabs">
-            {platforms.map((item) => (
-              <button
-                aria-pressed={platform === item.id}
-                className={`post-platform-tab${platform === item.id ? " selected" : ""}`}
-                key={item.id}
-                onClick={() => setPlatform(item.id)}
-                title={item.label}
-                type="button"
-              >
-                <span className={`post-platform-icon platform-${item.id}`}>{item.icon}</span>
-                <small>{item.label}</small>
-              </button>
-            ))}
+          <div className="post-platform-selector">
+            <label className="post-show-all-platforms">
+              <input
+                checked={showAllPlatforms}
+                onChange={(event) => {
+                  const showAll = event.target.checked;
+                  setShowAllPlatforms(showAll);
+                  if (!showAll) {
+                    setSelectedPlatforms((current) =>
+                      current.filter((item) => connectedPlatforms.includes(item)),
+                    );
+                  }
+                }}
+                type="checkbox"
+              />
+              <span className="post-show-all-control" aria-hidden="true" />
+              <span className="post-show-all-copy">
+                <strong>Show all platforms</strong>
+                <small>Include platforms that aren’t connected yet</small>
+              </span>
+            </label>
+            {visiblePlatforms.length > 0 ? (
+              <>
+                <div
+                  aria-label={showAllPlatforms ? "All social platforms" : "Connected social platforms"}
+                  className="post-platform-tabs"
+                  role="group"
+                >
+                  {visiblePlatforms.map((item) => {
+                    const isConnected = connectedPlatforms.includes(item.id);
+                    return (
+                      <button
+                        aria-pressed={selectedPlatforms.includes(item.id)}
+                        className={`post-platform-tab${selectedPlatforms.includes(item.id) ? " selected" : ""}`}
+                        key={item.id}
+                        onClick={() => togglePlatform(item.id)}
+                        title={item.label}
+                        type="button"
+                      >
+                        <span className={`post-platform-icon platform-${item.id}`} aria-hidden="true">{item.icon}</span>
+                        <span className="post-platform-tab-copy">
+                          <strong>{item.label}</strong>
+                          <small className={`post-platform-connection${isConnected ? " is-connected" : ""}`}>
+                            <i aria-hidden="true" />
+                            {isConnected ? "Connected" : "Not connected"}
+                          </small>
+                        </span>
+                        <span className="post-platform-selected-mark" aria-hidden="true">
+                          {selectedPlatforms.includes(item.id) ? "✓" : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="post-platform-selection-footer">
+                  <div className="post-platform-selection-summary">
+                    <span
+                      className={`post-platform-selection-dot${selectedPlatformsAreConnected ? " is-connected" : ""}`}
+                      aria-hidden="true"
+                    />
+                    <span>
+                      <strong>
+                        {selectedPlatforms.length
+                          ? selectedPlatforms
+                              .map((selected) => platforms.find((item) => item.id === selected)?.label ?? selected)
+                              .join(", ")
+                          : "No platform selected"}
+                      </strong>
+                      <small>
+                        {selectedPlatformsAreConnected
+                          ? `${selectedPlatforms.length} ${selectedPlatforms.length === 1 ? "platform" : "platforms"} ready for scheduling`
+                          : platformToConnect
+                            ? "Connect selected platforms to enable scheduling"
+                            : "Choose one or more platforms"}
+                      </small>
+                    </span>
+                  </div>
+                  <div className="post-platform-selection-actions">
+                    {platformToConnect && platformToConnectCanBeConnected && (
+                      <button
+                        className="button button-dark post-connect-selected-platform"
+                        disabled={isConnectingPlatform}
+                        onClick={() => void connectSelectedPlatform()}
+                        type="button"
+                      >
+                        {isConnectingPlatform
+                          ? "Opening…"
+                          : `Connect ${platformToConnectDetails?.label}`}
+                        {!isConnectingPlatform && <span aria-hidden="true">↗</span>}
+                      </button>
+                    )}
+                    <Link className="post-connect-account-link" href="/dashboard/accounts">
+                      Manage accounts
+                    </Link>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="post-no-connected-platform">
+                <p>No social accounts are connected yet.</p>
+                <Link className="button button-outline" href="/dashboard/accounts">
+                  Connect a social account ↗
+                </Link>
+              </div>
+            )}
           </div>
           <div className="post-format-options">
             {postFormats.map((item) => (
@@ -505,10 +679,19 @@ export function CreatePostComposer({
       <aside aria-live="polite" className="post-preview-panel">
         <div className="post-preview-heading">
           <div><span className="section-kicker">THE FINISHED FEED</span><h2>Post preview</h2></div>
-          <span className="post-preview-platform">{selectedPlatform.icon} {selectedPlatform.label}</span>
+          <span className="post-preview-platform">
+            {selectedPlatforms.length
+              ? selectedPlatforms
+                  .map((selected) => {
+                    const item = platforms.find((candidate) => candidate.id === selected);
+                    return item ? `${item.icon} ${item.label}` : selected;
+                  })
+                  .join(" · ")
+              : "Draft · no platform"}
+          </span>
         </div>
 
-        <article className={`social-post-card social-post-${platform}`}>
+        <article className={`social-post-card${platform ? ` social-post-${platform}` : ""}`}>
           <header className="social-post-header">
             <span className="social-post-avatar">
               {selectedCreator?.portraitUrl ? (
@@ -566,62 +749,33 @@ export function CreatePostComposer({
         </article>
 
         {preview && (
-          <section aria-label="Save or schedule post" className="post-delivery-panel">
-            <div className="post-delivery-heading">
-              <h3>Save or schedule</h3>
-              <span>{selectedPlatform.label}</span>
-            </div>
-            <div aria-label="Publishing timing" className="post-publish-mode">
-              <button
-                aria-pressed={actionMode === "publish"}
-                className={actionMode === "publish" ? "selected" : ""}
-                onClick={() => setActionMode("publish")}
-                type="button"
-              >
-                Publish now
-              </button>
-              <button
-                aria-pressed={actionMode === "schedule"}
-                className={actionMode === "schedule" ? "selected" : ""}
-                onClick={() => setActionMode("schedule")}
-                type="button"
-              >
-                Schedule later
-              </button>
-            </div>
-            {actionMode === "schedule" && (
-              <label className="post-schedule-field">
-                <span>Date and time</span>
-                <input
-                  min={toLocalDateTimeValue(new Date())}
-                  onChange={(event) => setScheduleTime(event.target.value)}
-                  type="datetime-local"
-                  value={scheduleTime}
-                />
-              </label>
-            )}
-            <p className="post-delivery-note">
-              Saving stores your post in Postly. Social accounts aren’t connected yet, so posts won’t publish automatically.
-            </p>
-            <div className="post-delivery-actions">
-              <button
-                className="post-save-draft-button"
-                disabled={isSaving}
-                onClick={() => void handleSavePost("draft")}
-                type="button"
-              >
-                {isSaving ? "Saving…" : "Save as draft"}
-              </button>
-              <button
-                className="button button-dark post-save-primary-button"
-                disabled={isSaving}
-                onClick={() => void handleSavePost(actionMode === "schedule" ? "scheduled" : "ready_to_publish")}
-                type="button"
-              >
-                {isSaving ? "Saving…" : actionMode === "schedule" ? "Schedule post" : "Publish now"}
-              </button>
-            </div>
-          </section>
+          <PostActionPanel
+            actionMode={actionMode}
+            canSchedule={selectedPlatformsAreConnected}
+            isSaving={isSaving}
+            mode="create"
+            note={
+              selectedPlatformsAreConnected
+                ? "Saving stores your post in Postly. Scheduling records it for every selected platform; it won’t publish automatically."
+                : platformToConnect
+                  ? "Connect every selected platform to enable scheduling, or save this post as a draft."
+                  : "No destination is selected. This post can only be saved as a draft."
+            }
+            onActionModeChange={setActionMode}
+            onPrimaryAction={() =>
+              void handleSavePost(actionMode === "schedule" ? "scheduled" : "ready_to_publish")
+            }
+            onSaveDraft={() => void handleSavePost("draft")}
+            onScheduleTimeChange={setScheduleTime}
+            platformLabel={
+              selectedPlatforms.length
+                ? selectedPlatforms
+                    .map((selected) => platforms.find((item) => item.id === selected)?.label ?? selected)
+                    .join(", ")
+                : "No platform selected"
+            }
+            scheduleTime={scheduleTime}
+          />
         )}
 
         {preview && (
@@ -639,7 +793,18 @@ export function CreatePostComposer({
             onCancel={() => setSaveNotice(null)}
             ref={saveDialogRef}
           >
-            <span className="post-save-dialog-icon" aria-hidden="true">✓</span>
+            <button
+              aria-label="Close confirmation"
+              className="post-save-dialog-close"
+              onClick={dismissSaveNotice}
+              type="button"
+            >
+              ×
+            </button>
+            <div aria-hidden="true" className="post-save-dialog-icon">✓</div>
+            <span className="post-save-dialog-eyebrow">
+              {saveNotice.status === "scheduled" ? "SCHEDULE CONFIRMED" : "SAVED TO POSTLY"}
+            </span>
             <h2 id="post-save-dialog-title">
               {saveNotice.status === "draft"
                 ? "Draft saved"
@@ -647,14 +812,21 @@ export function CreatePostComposer({
                   ? "Post scheduled"
                   : "Post saved"}
             </h2>
-            <p>
+            <p className="post-save-dialog-description">
               {saveNotice.status === "draft"
-                ? `Your ${selectedPlatform.label} post and image are saved as a draft.`
+                ? `Your post${saveNotice.platforms.length ? ` for ${saveNotice.platforms.map((selected) => platforms.find((item) => item.id === selected)?.label ?? selected).join(", ")}` : ""} and image are safely saved as a draft.`
                 : saveNotice.status === "scheduled"
-                  ? `Your post is saved for ${new Date(saveNotice.scheduledAt ?? "").toLocaleString()}. It won’t publish automatically until a social account and scheduler are connected.`
+                  ? `Your post for ${saveNotice.platforms.map((selected) => platforms.find((item) => item.id === selected)?.label ?? selected).join(", ")} is saved for ${new Date(saveNotice.scheduledAt ?? "").toLocaleString()}. It won’t publish automatically until a social account and scheduler are connected.`
                   : "Your post is saved in Postly and ready for publishing. It was not posted because social account integrations are not connected."}
             </p>
-            <button className="button button-dark" onClick={() => setSaveNotice(null)} type="button">Done</button>
+            <div className="post-save-dialog-actions">
+              <Link className="button button-outline" href="/dashboard/studio?view=posts">
+                View saved posts <span aria-hidden="true">↗</span>
+              </Link>
+              <button className="button button-dark" onClick={dismissSaveNotice} type="button">
+                Keep creating
+              </button>
+            </div>
           </dialog>
         )}
       </aside>
