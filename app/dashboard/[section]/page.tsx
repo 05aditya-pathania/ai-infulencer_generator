@@ -14,18 +14,6 @@ const sectionContent = {
     action: "Back to your overview",
     href: "/dashboard",
   },
-  calendar: {
-    eyebrow: "YOUR CONTENT PLAN",
-    title: "Content calendar",
-    description:
-      "See your social plans at a glance and make a posting rhythm that feels good.",
-    icon: "▦",
-    nextTitle: "Make room for your next idea.",
-    nextDescription:
-      "Once you draft a post, you’ll be able to plan it here and see your week take shape.",
-    action: "Create your first post",
-    href: "/dashboard/studio",
-  },
   accounts: {
     eyebrow: "YOUR SOCIAL CHANNELS",
     title: "Social accounts",

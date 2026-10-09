@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { isPostGenerationInput, platforms as availablePlatforms, type SocialPlatform } from "@/lib/posts/options";
+import {
+  combinePostCaption,
+  createZernioDraftPost,
+  getZernioSetup,
+  updateZernioScheduledPost,
+} from "@/lib/zernio";
 import { createClient } from "@/lib/supabase/server";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -133,13 +139,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let zernioTargets: { platform: string; accountId: string }[] = [];
   if (status !== "draft" && selectedPlatforms.length > 0) {
     const accountPlatforms = selectedPlatforms.map((platform) =>
       platform === "x" ? "twitter" : platform,
     );
     const { data: connectedAccounts, error: accountError } = await supabase
       .from("social_accounts")
-      .select("platform")
+      .select("platform, zernio_account_id")
       .eq("user_id", user.id)
       .in("platform", accountPlatforms);
 
@@ -159,6 +166,16 @@ export async function POST(request: NextRequest) {
         { error: `Connect every selected platform before scheduling or publishing this post. Not connected: ${labels}.` },
         { status: 400 },
       );
+    }
+    if (status === "scheduled") {
+      const setup = getZernioSetup();
+      if (!setup.configured) {
+        return NextResponse.json({ error: setup.error }, { status: 503 });
+      }
+      zernioTargets = (connectedAccounts ?? []).map((account) => ({
+        platform: account.platform,
+        accountId: account.zernio_account_id,
+      }));
     }
   }
 
@@ -207,8 +224,8 @@ export async function POST(request: NextRequest) {
       caption: caption.trim(),
       hashtags,
       image_path: imagePath,
-      status,
-      scheduled_at: scheduledAtIso,
+      status: status === "scheduled" ? "draft" : status,
+      scheduled_at: null,
     })
     .select("id, status, scheduled_at")
     .single();
@@ -222,11 +239,89 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "We couldn’t save this post. Please try again." }, { status: 500 });
   }
 
+  if (status === "scheduled" && scheduledAtIso) {
+    const { data: image, error: imageError } = await supabase.storage
+      .from("social-posts")
+      .createSignedUrl(imagePath, 60 * 60);
+    if (imageError || !image?.signedUrl) {
+      console.error("Could not prepare the new post image for Zernio:", imageError?.message);
+      return NextResponse.json(
+        { error: "Your post and image were saved as a draft, but the image could not be prepared for Zernio." },
+        { status: 500 },
+      );
+    }
+
+    let zernioPostId: string;
+    try {
+      zernioPostId = await createZernioDraftPost(savedPost.id, {
+        content: combinePostCaption(caption.trim(), hashtags),
+        mediaUrl: image.signedUrl,
+        targets: zernioTargets,
+      });
+    } catch (error) {
+      console.error("Could not create the post in Zernio:", error);
+      const detail = error instanceof Error ? error.message : "Please try again.";
+      return NextResponse.json(
+        { error: `Your post and image were saved as a draft, but Zernio could not schedule it: ${detail}` },
+        { status: 502 },
+      );
+    }
+
+    const { data: mappedPost, error: mappingError } = await supabase
+      .from("social_posts")
+      .update({ zernio_post_id: zernioPostId })
+      .eq("id", savedPost.id)
+      .eq("user_id", user.id)
+      .select("id")
+      .maybeSingle();
+    if (mappingError || !mappedPost) {
+      console.error("Could not save the new Zernio post mapping:", mappingError?.message ?? "No post row was updated.");
+      return NextResponse.json(
+        { error: "Zernio saved the post, but Postly couldn’t link it. Apply the latest Supabase migrations and try again." },
+        { status: 500 },
+      );
+    }
+
+    try {
+      await updateZernioScheduledPost(
+        zernioPostId,
+        {
+          content: combinePostCaption(caption.trim(), hashtags),
+          mediaUrl: image.signedUrl,
+          targets: zernioTargets,
+        },
+        scheduledAtIso,
+      );
+    } catch (error) {
+      console.error("Could not schedule the new post with Zernio:", error);
+      const detail = error instanceof Error ? error.message : "Please try again.";
+      return NextResponse.json(
+        { error: `Your post and image are saved as a draft, but Zernio could not schedule it: ${detail}` },
+        { status: 502 },
+      );
+    }
+
+    const { data: scheduledPost, error: scheduleError } = await supabase
+      .from("social_posts")
+      .update({ status: "scheduled", scheduled_at: scheduledAtIso })
+      .eq("id", savedPost.id)
+      .eq("user_id", user.id)
+      .select("id")
+      .maybeSingle();
+    if (scheduleError || !scheduledPost) {
+      console.error("Zernio scheduled the new post, but Postly could not save its schedule:", scheduleError?.message ?? "No post row was updated.");
+      return NextResponse.json(
+        { error: "Zernio scheduled this post, but Postly couldn’t update its local status. Reload and retry from the saved draft." },
+        { status: 500 },
+      );
+    }
+  }
+
   return NextResponse.json({
     post: {
       id: savedPost.id,
-      status: savedPost.status,
-      scheduledAt: savedPost.scheduled_at,
+      status,
+      scheduledAt: status === "scheduled" ? scheduledAtIso : savedPost.scheduled_at,
     },
   });
 }

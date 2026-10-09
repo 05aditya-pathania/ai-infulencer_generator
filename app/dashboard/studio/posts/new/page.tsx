@@ -3,7 +3,28 @@ import { CreatePostComposer, type PostCreator } from "@/components/create-post-c
 import { createClient } from "@/lib/supabase/server";
 import type { SocialPlatform } from "@/lib/posts/options";
 
-export default async function NewPostPage() {
+type NewPostPageProps = {
+  searchParams: Promise<{ scheduleDate?: string | string[] }>;
+};
+
+function validScheduleDate(value: string | string[] | undefined) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return undefined;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  return parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+    ? value
+    : undefined;
+}
+
+export default async function NewPostPage({ searchParams }: NewPostPageProps) {
+  const { scheduleDate: requestedScheduleDate } = await searchParams;
+  const scheduledDate = validScheduleDate(requestedScheduleDate);
   const supabase = await createClient();
   const {
     data: { user },
@@ -88,6 +109,7 @@ export default async function NewPostPage() {
         imageGenerationConfigured={Boolean(
           process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN,
         )}
+        scheduledDate={scheduledDate}
       />
     </div>
   );

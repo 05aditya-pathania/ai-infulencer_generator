@@ -238,3 +238,83 @@ export async function disconnectZernioAccount(accountId: string) {
     method: "DELETE",
   });
 }
+
+export type ZernioPostTarget = {
+  platform: string;
+  accountId: string;
+};
+
+type ZernioPostDetails = {
+  content: string;
+  mediaUrl: string;
+  targets: ZernioPostTarget[];
+};
+
+function getPostId(data: unknown) {
+  if (!isRecord(data) || !isRecord(data.post)) {
+    return null;
+  }
+
+  const id = data.post._id;
+  return typeof id === "string" && id ? id : null;
+}
+
+function createPostBody(details: ZernioPostDetails) {
+  return {
+    content: details.content,
+    mediaItems: [{ url: details.mediaUrl, type: "image" }],
+    platforms: details.targets,
+  };
+}
+
+export async function createZernioDraftPost(
+  postId: string,
+  details: ZernioPostDetails,
+) {
+  const data = await zernioRequest("/posts", {
+    method: "POST",
+    headers: { "Idempotency-Key": postId },
+    body: JSON.stringify({ ...createPostBody(details), isDraft: true }),
+  });
+  const zernioPostId = getPostId(data);
+  if (!zernioPostId) {
+    throw new Error("Zernio did not return a usable post ID.");
+  }
+
+  return zernioPostId;
+}
+
+export async function updateZernioScheduledPost(
+  zernioPostId: string,
+  details: ZernioPostDetails,
+  scheduledAt: string,
+) {
+  await zernioRequest(`/posts/${encodeURIComponent(zernioPostId)}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      ...createPostBody(details),
+      isDraft: false,
+      scheduledFor: new Date(scheduledAt).toISOString(),
+      timezone: "UTC",
+    }),
+  });
+}
+
+export async function updateZernioDraftPost(
+  zernioPostId: string,
+  content: string,
+) {
+  await zernioRequest(`/posts/${encodeURIComponent(zernioPostId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ content, isDraft: true }),
+  });
+}
+
+export function combinePostCaption(caption: string, hashtags: string[]) {
+  const uniqueHashtags = hashtags
+    .map((hashtag) => hashtag.trim())
+    .filter(Boolean)
+    .filter((hashtag) => !caption.toLowerCase().includes(hashtag.toLowerCase()))
+    .map((hashtag) => hashtag.startsWith("#") ? hashtag : `#${hashtag}`);
+  return [caption.trim(), uniqueHashtags.join(" ")].filter(Boolean).join("\n\n");
+}

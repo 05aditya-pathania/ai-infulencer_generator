@@ -60,11 +60,38 @@ type CreatePostComposerProps = {
   creators: PostCreator[];
   connectedPlatforms: SocialPlatform[];
   imageGenerationConfigured: boolean;
+  scheduledDate?: string;
 };
 
 function toLocalDateTimeValue(date: Date) {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return localDate.toISOString().slice(0, 16);
+}
+
+function initialScheduleTime(scheduledDate?: string) {
+  if (!scheduledDate) {
+    return toLocalDateTimeValue(new Date(Date.now() + 60 * 60 * 1000));
+  }
+
+  const [year, month, day] = scheduledDate.split("-").map(Number);
+  const selectedDate = new Date(year, month - 1, day, 9);
+  const now = new Date();
+  const isToday =
+    selectedDate.getFullYear() === now.getFullYear() &&
+    selectedDate.getMonth() === now.getMonth() &&
+    selectedDate.getDate() === now.getDate();
+
+  if (isToday) {
+    const soon = new Date(Date.now() + 30 * 60 * 1000);
+    selectedDate.setHours(
+      soon.getDate() === now.getDate() ? soon.getHours() : 23,
+      soon.getDate() === now.getDate() ? soon.getMinutes() : 59,
+      0,
+      0,
+    );
+  }
+
+  return toLocalDateTimeValue(selectedDate);
 }
 
 function waitForBlob(blob: Blob) {
@@ -126,6 +153,7 @@ export function CreatePostComposer({
   creators,
   connectedPlatforms,
   imageGenerationConfigured,
+  scheduledDate,
 }: CreatePostComposerProps) {
   const [modelId, setModelId] = useState(creators[0]?.id ?? "");
   const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>(
@@ -142,9 +170,11 @@ export function CreatePostComposer({
   const [language, setLanguage] = useState<PostLanguage>("English");
   const [hashtagCount, setHashtagCount] = useState(5);
   const [references, setReferences] = useState<ReferenceImage[]>([]);
-  const [actionMode, setActionMode] = useState<"publish" | "schedule">("publish");
+  const [actionMode, setActionMode] = useState<"publish" | "schedule">(
+    scheduledDate ? "schedule" : "publish",
+  );
   const [scheduleTime, setScheduleTime] = useState(() =>
-    toLocalDateTimeValue(new Date(Date.now() + 60 * 60 * 1000)),
+    initialScheduleTime(scheduledDate),
   );
   const [preview, setPreview] = useState<PostPreview | null>(null);
   const [caption, setCaption] = useState("");
@@ -816,7 +846,7 @@ export function CreatePostComposer({
               {saveNotice.status === "draft"
                 ? `Your post${saveNotice.platforms.length ? ` for ${saveNotice.platforms.map((selected) => platforms.find((item) => item.id === selected)?.label ?? selected).join(", ")}` : ""} and image are safely saved as a draft.`
                 : saveNotice.status === "scheduled"
-                  ? `Your post for ${saveNotice.platforms.map((selected) => platforms.find((item) => item.id === selected)?.label ?? selected).join(", ")} is saved for ${new Date(saveNotice.scheduledAt ?? "").toLocaleString()}. It won’t publish automatically until a social account and scheduler are connected.`
+                  ? `Zernio will publish your post to ${saveNotice.platforms.map((selected) => platforms.find((item) => item.id === selected)?.label ?? selected).join(", ")} on ${new Date(saveNotice.scheduledAt ?? "").toLocaleString()}.`
                   : "Your post is saved in Postly and ready for publishing. It was not posted because social account integrations are not connected."}
             </p>
             <div className="post-save-dialog-actions">

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { StudioRecentActivity, type StudioPost } from "@/components/studio-recent-activity";
 import { createClient } from "@/lib/supabase/server";
 
@@ -144,12 +145,40 @@ export default async function StudioPage({ searchParams }: StudioPageProps) {
               My models <span>{signedModels.length}</span>
             </Link>
             <Link aria-current={view === "posts" ? "page" : undefined} className={view === "posts" ? "active" : ""} href="/dashboard/studio?view=posts">
-              Generated posts
+              Generated posts <span>{postCount ?? 0}</span>
             </Link>
           </div>
         </div>
 
-        {view === "models" && signedModels.length > 0 ? (
+        {view === "posts" && recentPosts.length > 0 ? (
+          <div aria-label="Generated posts" className="studio-generated-post-grid">
+            {recentPosts.map((post) => (
+              <article className="studio-generated-post-card" key={post.id}>
+                <div className="studio-generated-post-image">
+                  {post.imageUrl ? (
+                    <Image
+                      alt={`${post.campaign || post.product} post`}
+                      fill
+                      sizes="(max-width: 700px) 50vw, (max-width: 1050px) 33vw, 260px"
+                      src={post.imageUrl}
+                      unoptimized
+                    />
+                  ) : (
+                    <span aria-hidden="true">✧</span>
+                  )}
+                  <span className={`studio-generated-post-status studio-post-status-${post.status}`}>
+                    {post.status === "draft" ? "Draft" : "Scheduled"}
+                  </span>
+                </div>
+                <div className="studio-generated-post-copy">
+                  <strong>{post.campaign || post.product || "Untitled post"}</strong>
+                  <span>{post.model_name} · {post.platforms.length ? post.platforms.join(", ") : post.platform ?? "No platform selected"}</span>
+                  <p>{post.caption || "No caption added."}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : view === "models" && signedModels.length > 0 ? (
           <div className="studio-model-grid">
             {signedModels.map((model) => (
               <article className="studio-model-card" key={model.id}>
@@ -168,9 +197,9 @@ export default async function StudioPage({ searchParams }: StudioPageProps) {
             <div aria-hidden="true" className="studio-empty-art"><span>✧</span><span>✳</span><div><i /><i /><i /></div></div>
             <span className="dashboard-panel-eyebrow">{view === "models" ? "A BLANK CANVAS, A MILLION POSSIBILITIES" : "YOUR NEXT STORY IS WAITING"}</span>
             <h3>{view === "models" ? "Your first model starts with a little imagination." : "Your post collection starts here."}</h3>
-            <p>{view === "models" ? "Choose the details, shape their style, and meet the character you create." : "Create a model first, then turn your ideas into your first AI-assisted post."}</p>
-            <Link className="button button-dark dashboard-small-button" href={view === "models" ? "/dashboard/studio/models/new" : "/dashboard/studio?view=models"}>
-              {view === "models" ? "Create your first model" : "Explore your models"} <span>↗</span>
+            <p>{view === "models" ? "Choose the details, shape their style, and meet the character you create." : "Create a post to see your saved drafts and scheduled posts here."}</p>
+            <Link className="button button-dark dashboard-small-button" href={view === "models" ? "/dashboard/studio/models/new" : "/dashboard/studio/posts/new"}>
+              {view === "models" ? "Create your first model" : "Create your first post"} <span>↗</span>
             </Link>
           </div>
         )}

@@ -134,6 +134,7 @@ export type Database = {
           caption: string;
           hashtags: string[];
           image_path: string;
+          zernio_post_id: string | null;
           status: "draft" | "scheduled" | "ready_to_publish";
           scheduled_at: string | null;
           created_at: string;
@@ -158,6 +159,7 @@ export type Database = {
           caption: string;
           hashtags?: string[];
           image_path: string;
+          zernio_post_id?: string | null;
           status: "draft" | "scheduled" | "ready_to_publish";
           scheduled_at?: string | null;
           created_at?: string;
@@ -182,6 +184,7 @@ export type Database = {
           caption?: string;
           hashtags?: string[];
           image_path?: string;
+          zernio_post_id?: string | null;
           status?: "draft" | "scheduled" | "ready_to_publish";
           scheduled_at?: string | null;
           created_at?: string;
