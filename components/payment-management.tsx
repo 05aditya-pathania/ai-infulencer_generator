@@ -45,7 +45,8 @@ export function PaymentManagement({
   );
   const syncStarted = useRef(false);
   const active = isActiveSubscription(subscriptionStatus) && plan !== "free";
-  const freeScheduleCount = plan === "free" ? `${scheduledPostCount} / 5` : null;
+  const freeScheduleCount =
+    plan === "free" ? `${scheduledPostCount} of 5 scheduled` : null;
 
   const syncPayment = useCallback(async () => {
     setSyncStatus("pending");
@@ -108,10 +109,13 @@ export function PaymentManagement({
   return (
     <div className="payment-management">
       {checkoutResult === "success" && syncStatus !== "error" && (
-        <div className="payment-notice" role="status">
+        <div className="payment-notice payment-notice-success" role="status">
+          <span className="payment-notice-icon" aria-hidden="true">✓</span>
+          <span>
           {syncStatus === "success"
-            ? "Payment confirmed. Your subscription credits have been applied."
-            : "Confirming your payment with Stripe and adding your credits…"}
+              ? "Payment confirmed. Your subscription credits have been applied."
+              : "Confirming your payment with Stripe and adding your credits…"}
+          </span>
         </div>
       )}
       {checkoutResult === "success" && syncStatus === "error" && (
@@ -134,21 +138,36 @@ export function PaymentManagement({
       )}
 
       <section className="payment-current-panel">
-        <div>
-          <span className="dashboard-panel-eyebrow">CURRENT SUBSCRIPTION</span>
-          <h2>{plan === "free" ? "Free plan" : `${plan === "standard" ? "Standard" : "Pro"} plan`}</h2>
+        <div className="payment-current-icon" aria-hidden="true">✦</div>
+        <div className="payment-current-summary">
+          <div className="payment-current-eyebrow">
+            <span className="dashboard-panel-eyebrow">CURRENT SUBSCRIPTION</span>
+            <span className={`payment-status-pill${active ? " is-active" : ""}`}>
+              <span aria-hidden="true" />
+              {active
+                ? "Active"
+                : hasStripeSubscription
+                  ? subscriptionStatus.replaceAll("_", " ")
+                  : "Free"}
+            </span>
+          </div>
+          <h2>{plan === "free" ? "Free" : plan === "standard" ? "Standard" : "Pro"}</h2>
           <p>
             {active
-              ? `Subscription status: ${subscriptionStatus.replaceAll("_", " ")}.`
+              ? `Your ${plan === "standard" ? "Standard" : "Pro"} plan is ready to go.`
               : hasStripeSubscription
-                ? `Subscription status: ${subscriptionStatus.replaceAll("_", " ")}. Update payment details to activate your plan.`
-                : "No active paid subscription."}
-            {" "}Credits available: <strong>{credits?.toLocaleString() ?? "—"}</strong>.
+                ? `Subscription status: ${subscriptionStatus.replaceAll("_", " ")}.`
+                : "Explore a plan to get more credits and creator tools."}
           </p>
+        </div>
+        <div className="payment-credit-balance">
+          <span>AVAILABLE CREDITS</span>
+          <strong>{credits?.toLocaleString() ?? "—"}</strong>
+          <small>Added after each successful payment</small>
         </div>
         {hasStripeCustomer && (
           <button
-            className="button button-dark"
+            className="button button-outline payment-manage-button"
             disabled={pending !== null}
             onClick={() => void openBilling("/api/billing/portal", "portal")}
             type="button"
@@ -159,48 +178,81 @@ export function PaymentManagement({
       </section>
 
       {plan === "free" && (
-        <p className="payment-free-limit">
-          Free plan autopost limit: up to 5 scheduled posts at one time. Standard and Pro include unlimited scheduled posts.
-          {freeScheduleCount && ` You currently have ${freeScheduleCount} scheduled.`}
-        </p>
+        <div className="payment-free-limit">
+          <span className="payment-limit-icon" aria-hidden="true">↗</span>
+          <p>
+            <strong>Free plan scheduling</strong>
+            <span>Up to 5 scheduled posts at once. Standard and Pro include unlimited scheduling.</span>
+          </p>
+          {freeScheduleCount && <span className="payment-schedule-count">{freeScheduleCount}</span>}
+        </div>
       )}
 
+      <div className="payment-plans-heading">
+        <div>
+          <span className="dashboard-panel-eyebrow">SIMPLE, CREATOR-FRIENDLY PRICING</span>
+          <h2>Choose your plan</h2>
+        </div>
+        <p>Pick the room you need to create and grow.</p>
+      </div>
       <div className="payment-plan-grid">
         {(Object.keys(subscriptionPlans) as PaidPlanId[]).map((id) => {
           const item = subscriptionPlans[id];
           const isCurrent = active && plan === id;
           return (
-            <article className={`payment-plan-card${id === "pro" ? " is-featured" : ""}`} key={id}>
-              <span className="dashboard-panel-eyebrow">{id === "pro" ? "FOR GROWING CREATORS" : "GET STARTED"}</span>
-              <h2>{item.name}</h2>
-              <p className="payment-plan-price">{item.priceLabel}<span> / month</span></p>
+            <article
+              className={`payment-plan-card${id === "pro" ? " is-featured" : ""}${isCurrent ? " is-current" : ""}`}
+              key={id}
+            >
+              <div className="payment-plan-topline">
+                <span className="payment-plan-icon" aria-hidden="true">{id === "pro" ? "✦" : "✳"}</span>
+                {id === "pro" && <span className="payment-popular-badge">MOST POPULAR</span>}
+                {isCurrent && <span className="payment-current-badge">YOUR PLAN</span>}
+              </div>
+              <h3>{item.name}</h3>
+              <p className="payment-plan-description">
+                {id === "pro" ? "For creators ready to scale their content." : "Everything you need to build a consistent rhythm."}
+              </p>
+              <p className="payment-plan-price">
+                <strong>{item.priceLabel}</strong>
+                <span>/ month</span>
+              </p>
+              <div className="payment-plan-credit-highlight">
+                <strong>{item.monthlyCredits.toLocaleString()}</strong>
+                <span>credits refreshed each month</span>
+              </div>
               <ul>
-                <li>{item.monthlyCredits.toLocaleString()} credits each paid month</li>
-                <li>50 credits per AI influencer</li>
-                <li>20 credits per new post</li>
-                <li>{item.maxSocialAccounts === null ? "Unlimited connected social accounts" : `Up to ${item.maxSocialAccounts} connected social accounts`}</li>
-                <li>Unlimited scheduled posts</li>
+                <li><span aria-hidden="true">✓</span>50 credits per AI influencer</li>
+                <li><span aria-hidden="true">✓</span>20 credits per new post</li>
+                <li><span aria-hidden="true">✓</span>{item.maxSocialAccounts === null ? "Unlimited connected accounts" : `Up to ${item.maxSocialAccounts} connected accounts`}</li>
+                <li><span aria-hidden="true">✓</span>Unlimited scheduled posts</li>
               </ul>
               <button
-                className={id === "pro" ? "button button-dark" : "button button-outline"}
-                disabled={pending !== null || active || hasStripeSubscription}
-                onClick={() => void openBilling("/api/billing/checkout", id)}
+                className={`button ${id === "pro" ? "button-dark" : "button-outline"} payment-plan-action`}
+                disabled={pending !== null || isCurrent}
+                onClick={() =>
+                  void openBilling(
+                    hasStripeSubscription
+                      ? "/api/billing/portal"
+                      : "/api/billing/checkout",
+                    hasStripeSubscription ? "portal" : id,
+                  )
+                }
                 type="button"
               >
-                {pending === id ? "Opening secure checkout…" : isCurrent ? "Current plan" : active || hasStripeSubscription ? "Manage current plan" : `Choose ${item.name}`}
+                {pending === id || (pending === "portal" && !isCurrent)
+                  ? "Opening secure billing…"
+                  : isCurrent
+                    ? "Current plan"
+                    : hasStripeSubscription
+                      ? "Manage subscription"
+                      : `Choose ${item.name}`}
               </button>
             </article>
           );
         })}
       </div>
 
-      {(active || hasStripeSubscription) && (
-        <p className="payment-manage-hint">
-          {active
-            ? "You already have an active subscription. Use Manage payment to update billing or cancel before choosing another plan."
-            : "A subscription is still active or syncing. Use Manage payment to update its billing, or wait for cancellation to finish before choosing another plan."}
-        </p>
-      )}
     </div>
   );
 }
