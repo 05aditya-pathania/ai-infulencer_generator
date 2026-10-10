@@ -8028,3 +8028,146 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+.payment-management {
+  display: grid;
+  gap: 18px;
+}
+
+.accounts-plan-limit {
+  margin-top: 7px !important;
+  color: #6f6b78 !important;
+  line-height: 1.6;
+}
+
+.payment-current-panel,
+.payment-plan-card {
+  border: 1px solid #ebe8e2;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.payment-current-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px;
+}
+
+.payment-current-panel h2,
+.payment-plan-card h2 {
+  margin: 7px 0;
+  color: #383644;
+}
+
+.payment-current-panel p {
+  margin: 0;
+  color: #817e8b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.payment-free-limit,
+.payment-manage-hint {
+  margin: 0;
+  padding: 13px 16px;
+  border: 1px solid #e7e2d8;
+  border-radius: 8px;
+  background: #fbfaf7;
+  color: #6f6b78;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.payment-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.payment-plan-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 22px;
+}
+
+.payment-plan-card.is-featured {
+  border-color: #8a77dc;
+  box-shadow: 0 7px 22px #5542a30e;
+}
+
+.payment-plan-price {
+  margin: 3px 0 10px;
+  color: #39354d;
+  font-size: 27px;
+  font-weight: 700;
+}
+
+.payment-plan-price span {
+  color: #817e8b;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.payment-plan-card ul {
+  display: grid;
+  gap: 10px;
+  margin: 9px 0 20px;
+  padding: 0;
+  color: #6f6b78;
+  font-size: 12px;
+  list-style: none;
+}
+
+.payment-plan-card li::before {
+  margin-right: 8px;
+  color: #6d55ca;
+  content: "✓";
+}
+
+.payment-plan-card button {
+  width: 100%;
+  margin-top: auto;
+}
+
+.payment-notice {
+  margin: 0;
+  padding: 13px 16px;
+  border: 1px solid #d9e9dc;
+  border-radius: 8px;
+  background: #f4fbf5;
+  color: #3e7447;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.payment-notice.is-error {
+  border-color: #f0d5d2;
+  background: #fff7f6;
+  color: #9a4038;
+}
+
+.payment-sync-retry {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 700px) {
+  .payment-plan-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-current-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

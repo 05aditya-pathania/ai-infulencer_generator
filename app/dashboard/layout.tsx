@@ -28,7 +28,7 @@ export default async function DashboardLayout({
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("display_name, email, credits")
+    .select("display_name, email, credits, plan")
     .eq("id", user.id)
     .maybeSingle();
   const { count: connectedAccountsCount, error: accountsError } = await supabase
@@ -53,6 +53,7 @@ export default async function DashboardLayout({
       email={profile?.email ?? user.email ?? ""}
       credits={profile?.credits ?? null}
       profileError={Boolean(profileError)}
+      plan={profile?.plan ?? "free"}
       connectedAccountsCount={
         accountsError ? null : (connectedAccountsCount ?? 0)
       }

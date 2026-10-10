@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("zernio_profile_id")
+    .select("zernio_profile_id, plan")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -70,6 +70,23 @@ export async function POST(request: NextRequest) {
       { error: "Your account profile could not be loaded. Apply the latest Supabase migrations and try again." },
       { status: 500 },
     );
+  }
+
+  if (profile.plan === "standard") {
+    const { count, error: countError } = await supabase
+      .from("social_accounts")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id);
+    if (countError) {
+      console.error("Could not check the connected account limit:", countError.message);
+      return NextResponse.json({ error: "We couldn’t check your connected account limit." }, { status: 500 });
+    }
+    if ((count ?? 0) >= 5) {
+      return NextResponse.json(
+        { error: "The Standard plan allows up to 5 connected social accounts. Disconnect an account or upgrade to Pro." },
+        { status: 409 },
+      );
+    }
   }
 
   try {

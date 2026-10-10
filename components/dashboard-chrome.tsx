@@ -66,6 +66,7 @@ type DashboardChromeProps = {
   credits: number | null;
   profileError: boolean;
   connectedAccountsCount: number | null;
+  plan: "free" | "standard" | "pro";
 };
 
 export function DashboardChrome({
@@ -75,6 +76,7 @@ export function DashboardChrome({
   credits,
   profileError,
   connectedAccountsCount,
+  plan,
 }: DashboardChromeProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -131,7 +133,7 @@ export function DashboardChrome({
 
         <div className="dashboard-workspace">
           <span className="workspace-avatar">P</span>
-          <span className="workspace-copy"><strong>Personal workspace</strong><small>Free plan</small></span>
+          <span className="workspace-copy"><strong>Personal workspace</strong><small>{plan === "free" ? "Free plan" : `${plan === "standard" ? "Standard" : "Pro"} plan`}</small></span>
           <span className="workspace-chevron">⌄</span>
         </div>
 
@@ -167,7 +169,7 @@ export function DashboardChrome({
             <span /><span /><span />
           </button>
           <div className="dashboard-breadcrumb"><span>Workspace</span><span className="breadcrumb-divider">/</span><strong>{title}</strong></div>
-          <CreditsBadge initialCredits={credits} />
+          <CreditsBadge initialCredits={credits} key={credits} />
           <Link className="button button-dark dashboard-create-button" href="/dashboard/studio">
             <span aria-hidden="true">＋</span> Create post
           </Link>

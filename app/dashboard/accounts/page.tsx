@@ -19,6 +19,8 @@ const connectionFailureMessages: Record<string, string> = {
       "We couldn’t match the returned account to your signed-in Postly profile. Sign out and back in, then try again.",
   database:
       "We couldn’t save the account after platform authorization. Confirm the latest Supabase social accounts migration has been applied.",
+    limit:
+      "The Standard plan allows up to 5 connected social accounts. Disconnect one of your accounts or upgrade to Pro in Settings.",
   service:
       "We couldn’t verify the connected account with Zernio. Check the Zernio service and server logs, then try again.",
 };
@@ -72,6 +74,9 @@ export default async function AccountsPage({ searchParams }: AccountsPageProps) 
         .eq("user_id", user.id)
         .order("connected_at", { ascending: false })
     : { data: [], error: null };
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("plan").eq("id", user.id).maybeSingle()
+    : { data: null };
 
   const setup = getZernioSetup();
   const connectionNotice =
@@ -87,11 +92,19 @@ export default async function AccountsPage({ searchParams }: AccountsPageProps) 
         <span className="section-kicker">YOUR SOCIAL CHANNELS</span>
         <h1>Social accounts</h1>
         <p>Connect your channels securely and keep your social presence together in one place.</p>
+        <p className="accounts-plan-limit">
+          {profile?.plan === "standard"
+            ? "Standard includes up to 5 connected social accounts; Pro includes unlimited accounts."
+            : profile?.plan === "pro"
+              ? "Your Pro plan includes unlimited connected social accounts."
+              : "Upgrade to Standard for up to 5 connected accounts or Pro for unlimited accounts."}
+        </p>
       </section>
       <AccountConnections
         accounts={accounts ?? []}
         connectionNotice={connectionNotice}
         databaseReady={!error}
+        maxAccounts={profile?.plan === "standard" ? 5 : null}
         setupError={setup.configured ? null : setup.error}
       />
     </div>

@@ -133,6 +133,36 @@ export async function PATCH(
     return NextResponse.json({ error: "This post could not be found." }, { status: 404 });
   }
 
+  if (body.status === "scheduled" && post.status !== "scheduled") {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profileError || !profile) {
+      console.error("Could not load the account plan before scheduling a post:", profileError?.message);
+      return NextResponse.json({ error: "Your account plan could not be verified." }, { status: 500 });
+    }
+    if (profile.plan === "free") {
+      const { count, error: countError } = await supabase
+        .from("social_posts")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("status", "scheduled")
+        .gt("scheduled_at", new Date().toISOString());
+      if (countError) {
+        console.error("Could not check the free scheduled-post limit:", countError.message);
+        return NextResponse.json({ error: "We couldn’t check your scheduled-post limit." }, { status: 500 });
+      }
+      if ((count ?? 0) >= 5) {
+        return NextResponse.json(
+          { error: "The Free plan allows up to 5 scheduled posts at one time. Upgrade to Standard or Pro for unlimited scheduled posts." },
+          { status: 409 },
+        );
+      }
+    }
+  }
+
   let zernioPostId = post.zernio_post_id;
   const content = combinePostCaption(
     updates.caption ?? post.caption,
@@ -252,6 +282,19 @@ export async function PATCH(
     .maybeSingle();
 
   if (error) {
+    if (error.message.includes("FREE_SCHEDULE_LIMIT_REACHED")) {
+      try {
+        if (zernioPostId) {
+          await updateZernioDraftPost(zernioPostId, content);
+        }
+      } catch (unscheduleError) {
+        console.error("Could not undo the over-limit Zernio schedule:", unscheduleError);
+      }
+      return NextResponse.json(
+        { error: "The Free plan allows up to 5 scheduled posts at one time. Upgrade to Standard or Pro for unlimited scheduled posts." },
+        { status: 409 },
+      );
+    }
     console.error("Could not update social post:", error.message);
     return NextResponse.json({ error: "The Zernio schedule was updated, but Postly couldn’t save the change. Please reload and try again." }, { status: 500 });
   }

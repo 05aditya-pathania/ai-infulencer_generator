@@ -5,6 +5,7 @@ import {
   combinePostCaption,
   createZernioDraftPost,
   getZernioSetup,
+  updateZernioDraftPost,
   updateZernioScheduledPost,
 } from "@/lib/zernio";
 import { createClient } from "@/lib/supabase/server";
@@ -132,6 +133,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Please sign in before saving this post." }, { status: 401 });
   }
 
+  const { data: billingProfile, error: billingProfileError } = await supabase
+    .from("profiles")
+    .select("plan")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (billingProfileError || !billingProfile) {
+    console.error("Could not load the account plan before creating a post:", billingProfileError?.message);
+    return NextResponse.json({ error: "Your account plan could not be verified." }, { status: 500 });
+  }
+
+  if (status === "scheduled" && billingProfile.plan === "free") {
+    const { count, error: scheduledCountError } = await supabase
+      .from("social_posts")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("status", "scheduled")
+      .gt("scheduled_at", new Date().toISOString());
+    if (scheduledCountError) {
+      console.error("Could not check the free scheduled-post limit:", scheduledCountError.message);
+      return NextResponse.json({ error: "We couldn’t check your scheduled-post limit." }, { status: 500 });
+    }
+    if ((count ?? 0) >= 5) {
+      return NextResponse.json(
+        { error: "The Free plan allows up to 5 scheduled posts at one time. Upgrade to Standard or Pro for unlimited scheduled posts." },
+        { status: 409 },
+      );
+    }
+  }
+
   if (status !== "draft" && selectedPlatforms.length === 0) {
     return NextResponse.json(
       { error: "Connect and select at least one social platform before scheduling or publishing this post." },
@@ -192,6 +222,18 @@ export async function POST(request: NextRequest) {
   }
 
   const postId = randomUUID();
+  const reservation = await supabase.rpc("reserve_post_creation", { p_post_id: postId });
+  if (reservation.error) {
+    if (reservation.error.message.includes("INSUFFICIENT_CREDITS")) {
+      return NextResponse.json(
+        { error: "You need 20 credits to create a new post. Add credits or subscribe to continue." },
+        { status: 402 },
+      );
+    }
+    console.error("Could not reserve credits for the new post:", reservation.error.message);
+    return NextResponse.json({ error: "We couldn’t create this post. Please try again." }, { status: 500 });
+  }
+
   const extension = contentType === "image/jpeg" ? "jpg" : contentType.slice("image/".length);
   const imagePath = `${user.id}/${postId}/image.${extension}`;
   const { error: uploadError } = await supabase.storage
@@ -200,6 +242,10 @@ export async function POST(request: NextRequest) {
 
   if (uploadError) {
     console.error("Could not upload saved social post image:", uploadError.message);
+    const { error: refundError } = await supabase.rpc("refund_post_creation", { p_post_id: postId });
+    if (refundError) {
+      console.error("Could not refund credits after a post image upload failure:", refundError.message);
+    }
     return NextResponse.json({ error: "We couldn’t store the post image. Please try again." }, { status: 500 });
   }
 
@@ -234,6 +280,10 @@ export async function POST(request: NextRequest) {
     const { error: cleanupError } = await supabase.storage.from("social-posts").remove([imagePath]);
     if (cleanupError) {
       console.error("Could not clean up unsaved social post image:", cleanupError.message);
+    }
+    const { error: refundError } = await supabase.rpc("refund_post_creation", { p_post_id: postId });
+    if (refundError) {
+      console.error("Could not refund credits after a post save failure:", refundError.message);
     }
     console.error("Could not save social post:", saveError?.message);
     return NextResponse.json({ error: "We couldn’t save this post. Please try again." }, { status: 500 });
@@ -309,6 +359,20 @@ export async function POST(request: NextRequest) {
       .select("id")
       .maybeSingle();
     if (scheduleError || !scheduledPost) {
+      if (scheduleError?.message.includes("FREE_SCHEDULE_LIMIT_REACHED")) {
+        try {
+          await updateZernioDraftPost(
+            zernioPostId,
+            combinePostCaption(caption.trim(), hashtags),
+          );
+        } catch (unscheduleError) {
+          console.error("Could not undo the over-limit Zernio schedule:", unscheduleError);
+        }
+        return NextResponse.json(
+          { error: "The Free plan allows up to 5 scheduled posts at one time. Upgrade to Standard or Pro for unlimited scheduled posts." },
+          { status: 409 },
+        );
+      }
       console.error("Zernio scheduled the new post, but Postly could not save its schedule:", scheduleError?.message ?? "No post row was updated.");
       return NextResponse.json(
         { error: "Zernio scheduled this post, but Postly couldn’t update its local status. Reload and retry from the saved draft." },

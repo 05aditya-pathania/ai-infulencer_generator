@@ -785,11 +785,13 @@ export function CreatePostComposer({
             isSaving={isSaving}
             mode="create"
             note={
-              selectedPlatformsAreConnected
-                ? "Saving stores your post in Postly. Scheduling records it for every selected platform; it won’t publish automatically."
-                : platformToConnect
-                  ? "Connect every selected platform to enable scheduling, or save this post as a draft."
-                  : "No destination is selected. This post can only be saved as a draft."
+              `Creating a new post costs 20 credits. ${
+                selectedPlatformsAreConnected
+                  ? "Scheduling records it for every selected platform; it won’t publish automatically."
+                  : platformToConnect
+                    ? "Connect every selected platform to enable scheduling, or save this post as a draft."
+                    : "No destination is selected. This post can only be saved as a draft."
+              }`
             }
             onActionModeChange={setActionMode}
             onPrimaryAction={() =>

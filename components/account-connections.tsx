@@ -13,6 +13,7 @@ type AccountConnectionsProps = {
   connectionNotice: string | null;
   databaseReady: boolean;
   setupError: string | null;
+  maxAccounts: number | null;
 };
 
 async function getResponseError(response: Response, fallback: string) {
@@ -39,6 +40,7 @@ export function AccountConnections({
   connectionNotice,
   databaseReady,
   setupError,
+  maxAccounts,
 }: AccountConnectionsProps) {
   const router = useRouter();
   const [pendingPlatform, setPendingPlatform] = useState<string | null>(null);
@@ -179,12 +181,18 @@ export function AccountConnections({
                 </div>
                 <button
                   className="button button-dark accounts-connect-button"
-                  disabled={pendingPlatform !== null || pendingAccount !== null}
+                  disabled={
+                    pendingPlatform !== null ||
+                    pendingAccount !== null ||
+                    (maxAccounts !== null && accounts.length >= maxAccounts)
+                  }
                   onClick={() => void connect(platform.id)}
                   type="button"
                 >
                   {pendingPlatform === platform.id
                     ? "Opening…"
+                    : maxAccounts !== null && accounts.length >= maxAccounts
+                      ? "Limit reached"
                     : connectedCount > 0
                       ? "Add another"
                       : "Connect"}

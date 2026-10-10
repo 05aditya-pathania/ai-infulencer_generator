@@ -17,6 +17,10 @@ export type Database = {
           credits: number;
           created_at: string;
           zernio_profile_id: string | null;
+          plan: "free" | "standard" | "pro";
+          subscription_status: string;
+          stripe_customer_id: string | null;
+          stripe_subscription_id: string | null;
         };
         Insert: {
           id: string;
@@ -25,6 +29,10 @@ export type Database = {
           credits?: number;
           created_at?: string;
           zernio_profile_id?: string | null;
+          plan?: "free" | "standard" | "pro";
+          subscription_status?: string;
+          stripe_customer_id?: string | null;
+          stripe_subscription_id?: string | null;
         };
         Update: {
           id?: string;
@@ -33,6 +41,10 @@ export type Database = {
           credits?: number;
           created_at?: string;
           zernio_profile_id?: string | null;
+          plan?: "free" | "standard" | "pro";
+          subscription_status?: string;
+          stripe_customer_id?: string | null;
+          stripe_subscription_id?: string | null;
         };
         Relationships: [];
       };
@@ -195,6 +207,16 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      apply_subscription_payment: {
+        Args: {
+          p_user_id: string;
+          p_plan: string;
+          p_customer_id: string;
+          p_subscription_id: string;
+          p_invoice_id: string;
+        };
+        Returns: boolean;
+      };
       reserve_influencer_generation: {
         Args: { p_name: string; p_traits: Json; p_prompt: string };
         Returns: { generation_id: string; remaining_credits: number }[];
@@ -210,6 +232,14 @@ export type Database = {
           p_full_body_path: string;
         };
         Returns: undefined;
+      };
+      reserve_post_creation: {
+        Args: { p_post_id: string };
+        Returns: number;
+      };
+      refund_post_creation: {
+        Args: { p_post_id: string };
+        Returns: number;
       };
     };
     Enums: Record<string, never>;

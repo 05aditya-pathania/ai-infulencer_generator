@@ -18,6 +18,7 @@ type ConnectionFailureReason =
   | "callback"
   | "profile"
   | "database"
+  | "limit"
   | "service";
 
 function getSafeOAuthErrorCode(params: URLSearchParams) {
@@ -172,6 +173,9 @@ export async function GET(request: NextRequest) {
         return accountsPage(setup, "failed", "database");
       }
     } else if (insertError) {
+      if (insertError.code === "23514" && insertError.message.includes("SOCIAL_ACCOUNT_LIMIT_REACHED")) {
+        return accountsPage(setup, "failed", "limit");
+      }
       console.error("Could not save the connected social account:", insertError.message);
       return accountsPage(setup, "failed", "database");
     }
